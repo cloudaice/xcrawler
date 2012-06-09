@@ -2,7 +2,12 @@
 import urllib
 import urllib2
 import cookielib
+import redis
+import cPickle as pickle
 
+"""
+使用cPickle模块速度会更加快
+"""
 class produce_req:
     def __init__(self,url,data={},headers={}):
         self.url = url
@@ -34,6 +39,37 @@ class produce_req:
         opener = urllib2.build_opener(proxy_support,cookie_support,urllib2.HTTPHandler)
         urllib2.install_opener(opener)
 
+"""request_data is a dict and have these keys"""
+"""
+"id":
+"url":
+"method":
+"req_data":
+"headers":
+"""
+def into_redis(request_data,listname):
+    """使用序列化方法存储到redis的list中，并且将list作为一个queue"""
+    r = redis.Redis()
+    p = pickle.dumps(request_data)
+    r.lpush(listname,p)
+
+
+def out_redis(listname):
+    """从redis数据库中取出序列化的数据，并且进行解序列化"""
+    r = redis.Redis()
+    t=r.rpop(listname)
+    data = pickle.loads(t)
+    return (data["id"],data["url"],data["method"],data["post_or_get_data"],data["headers"])
+
+def into_result_queue(hashname,ids,result_data):
+    r = redis.Redis()
+    r.hset(hashname,ids,result_data)
+def get_result_from_queue(hashname,ids):
+    """docstring for get_result_from_queue"""
+    r = redis.Redis()
+    return   r.hget(hashname,ids)
+
+
 if __name__=="__main__":
     data= {
             'BH': "0903101",
@@ -43,37 +79,17 @@ if __name__=="__main__":
     headers= {
            "User-Agent":"Mozilla/5.0 (X11; Linux i686) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5",
         }
-    req = produce_req(url,data,headers)
-    req = req.return_req("POST")
-    result = urllib2.urlopen(req)
-    print result.read().decode("gb2312","ignore").encode("utf-8")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    request_data = {"id":"001","url":url,"method":"POST","post_or_get_data":data,"headers":headers}
+    for i in range(1000):
+        into_redis(request_data,"linkbase")
+        ids,url,method,data,headers = out_redis("linkbase")
+        req = produce_req(url,data,headers)
+        req = req.return_req(method)
+        result = urllib2.urlopen(req)
+        result=result.read().decode("gb2312","ignore").encode("utf-8")
+        into_result_queue("result_data",ids,result)
+        print get_result_from_queue("result_data",ids)
+        #print result.info()
 
 
 
@@ -98,6 +114,7 @@ getdata = urllib.urlencode(
             }
         )
 """
+
 """
 产生postdata
 具体内容也是根据要抓取的网页决定
@@ -112,6 +129,7 @@ postdata = urllib.urlencode (
             }
         )
 """
+
 """
 设置header的信息
 有些时候模仿浏览器来抓取网页
@@ -124,6 +142,7 @@ headers= {"User-Agent":"Mozilla/5.0 (X11; Linux i686) AppleWebKit/536.5 (KHTML, 
            .......
         }
 """
+
 """
 cookie处理
 使用代理抓取
@@ -135,11 +154,11 @@ opener = urllib2.build_opener(proxy_support,cookie_support,urllib2.HTTPHandler)
 urllib2.install_opener(opener)
 """
 
-"""
-生成http请求
-"""
+""" 生成http请求 """
 """get请求"""
+"""
 req =  urllib2.Request(url+"?"+getdata)
+"""
 
 """post请求"""
 """
