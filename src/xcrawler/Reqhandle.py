@@ -4,10 +4,12 @@ import urllib2
 import cookielib
 import redis
 import cPickle as pickle
+from tool import *
 
 """
 使用cPickle模块速度会更加快
 """
+
 class produce_req:
     def __init__(self,url,data={},headers={}):
         self.url = url
@@ -19,9 +21,9 @@ class produce_req:
         if not self.url:
             raise  "no url"
         if method=="GET":
-            return urllib2.Request(url+"?"+urllib.urlencode(self.data),headers)
+            return urllib2.Request(url+"?")
         else:
-            return urllib2.Request(url,urllib.urlencode(self.data),headers)
+            return urllib2.Request(url,urllib.urlencode(self.data),self.headers)
 
     def install_cookie(self):
         cookie_support = urllib2.HTTPCookieProcessor(cookielib.CookieJar())
@@ -39,7 +41,9 @@ class produce_req:
         opener = urllib2.build_opener(proxy_support,cookie_support,urllib2.HTTPHandler)
         urllib2.install_opener(opener)
 
+
 """request_data is a dict and have these keys"""
+
 """
 "id":
 "url":
@@ -47,54 +51,23 @@ class produce_req:
 "req_data":
 "headers":
 """
-def into_redis(request_data,listname):
-    """使用序列化方法存储到redis的list中，并且将list作为一个queue"""
-    r = redis.Redis()
-    p = pickle.dumps(request_data)
-    r.lpush(listname,p)
-
-
-def out_redis(listname):
-    """从redis数据库中取出序列化的数据，并且进行解序列化"""
-    r = redis.Redis()
-    t=r.rpop(listname)
-    data = pickle.loads(t)
-    return (data["id"],data["url"],data["method"],data["post_or_get_data"],data["headers"])
-
-def into_result_queue(hashname,ids,result_data):
-    r = redis.Redis()
-    r.hset(hashname,ids,result_data)
-def get_result_from_queue(hashname,ids):
-    """docstring for get_result_from_queue"""
-    r = redis.Redis()
-    return   r.hget(hashname,ids)
 
 
 if __name__=="__main__":
-    data= {
-            'BH': "0903101",
-            'submit': '查询课表'.decode('utf-8').encode('gb2312'),
-          }
-    url = "http://xscj.hit.edu.cn/HitJwgl/XS/kfxqkb.asp"
-    headers= {
-           "User-Agent":"Mozilla/5.0 (X11; Linux i686) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5",
-        }
-    request_data = {"id":"001","url":url,"method":"POST","post_or_get_data":data,"headers":headers}
+    r = redis.Redis()
+    url = "http://www.sina.com.cn"
+    request_data = {"id":"001","url":url,"method":"GET"}
     for i in range(1000):
-        into_redis(request_data,"linkbase")
-        ids,url,method,data,headers = out_redis("linkbase")
-        req = produce_req(url,data,headers)
+        into_redis(r,request_data,"linkbase")
+        ids,url,method = out_redis(r,"linkbase")
+        print ids,url,method
+        req = produce_req(url)
         req = req.return_req(method)
         result = urllib2.urlopen(req)
         result=result.read().decode("gb2312","ignore").encode("utf-8")
-        into_result_queue("result_data",ids,result)
-        print get_result_from_queue("result_data",ids)
+        into_result_queue(r,"result_data",ids,result)
+        print get_result_from_queue(r,"result_data",ids)
         #print result.info()
-
-
-
-
-
 
 """
 定义url
